@@ -10,6 +10,32 @@ OpenCascade is a Python library that automatically selects, routes, and combines
 
 ---
 
+## 🚀 Quick Start
+
+```python
+from opencascade import Orchestrator, TaskType
+
+# Initialize
+orchestrator = Orchestrator()
+
+# Process a query
+response = orchestrator.process("What is Python?")
+print(response)
+
+# Process with specific task type
+code_response = orchestrator.process(
+    "Write a fibonacci function",
+    task_type=TaskType.CODE
+)
+
+# Multi-model processing
+combined = orchestrator.process_multi(
+    query="Explain quantum computing",
+    num_models=2,
+    combination_method="summarize"
+)
+```
+
 ## 🌟 Features
 
 Smart Model Selector is a unified interface for discovering, connecting, and using open-access models across the AI ecosystem. It automatically selects, routes, and combines outputs from free GenAI models and API providers.
