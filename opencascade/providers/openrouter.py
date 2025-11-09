@@ -1,108 +1,105 @@
 """OpenRouter provider implementation."""
 
+import os
 from typing import Dict, Any, List, Optional
 import aiohttp
 import json
 from datetime import datetime
 
-from .base import BaseProvider, ModelCapabilities
+from .base import BaseProvider
+
 
 class OpenRouterProvider(BaseProvider):
     """Provider implementation for OpenRouter free tier."""
     
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
-        """Initialize OpenRouter provider."""
+    def __init__(self, api_key: Optional[str] = None, config: Optional[Dict[str, Any]] = None):
+        """Initialize OpenRouter provider.
+        
+        Args:
+            api_key: OpenRouter API key (or use OPENROUTER_API_KEY env var)
+            config: Optional configuration dictionary
+        """
+        super().__init__(name="OpenRouter")
+        self.api_key = api_key or os.getenv("OPENROUTER_API_KEY")
         self.config = config or {}
         self.base_url = "https://openrouter.ai/api/v1"
         self._capabilities = None
         self._last_health_check = None
+        self._session: Optional[aiohttp.ClientSession] = None
     
-    @property
-    def name(self) -> str:
-        return "openrouter"
-    
-    async def is_available(self) -> bool:
+    def is_available(self) -> bool:
         """Check if OpenRouter is available."""
-        try:
-            health = await self.health_check()
-            return health.get("status") == "ok"
-        except:
-            return False
+        return self.api_key is not None
     
-    async def get_capabilities(self) -> Dict[str, Any]:
-        """Get OpenRouter capabilities and available models."""
-        if not self._capabilities:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(f"{self.base_url}/models") as response:
-                    if response.status == 200:
-                        self._capabilities = await response.json()
-        return self._capabilities or {}
+    def supports_task(self, task_type) -> bool:
+        """Check if provider supports the task type."""
+        from ..classifier.task_types import TaskType
+        # OpenRouter supports chat and code
+        return task_type in [TaskType.CHAT, TaskType.CODE]
     
-    async def generate(self, prompt: str, **kwargs) -> str:
-        """Generate a response using OpenRouter."""
-        model = kwargs.get("model", "mistral-7b-instruct")  # default model
+    async def _get_session(self) -> aiohttp.ClientSession:
+        """Get or create aiohttp session."""
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession()
+        return self._session
+    
+    async def generate(self, prompt: str, task_type=None, **kwargs) -> str:
+        """Generate a response using OpenRouter.
         
-        async with aiohttp.ClientSession() as session:
-            payload = {
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}]
-            }
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.config.get('api_key', '')}"
-            }
+        Args:
+            prompt: Input prompt
+            task_type: Task type (optional)
+            **kwargs: Additional parameters
             
-            async with session.post(
-                f"{self.base_url}/chat/completions",
-                json=payload,
-                headers=headers
-            ) as response:
-                if response.status != 200:
-                    raise Exception(f"OpenRouter API error: {response.status}")
-                    
-                result = await response.json()
+        Returns:
+            Generated response
+        """
+        if not self.api_key:
+            raise Exception("OpenRouter API key not configured")
+        
+        # Use a working free model - try google/gemma-2-9b-it:free or mistralai/mistral-7b-instruct:free
+        model = kwargs.get("model", "mistralai/mistral-7b-instruct:free")
+        
+        session = await self._get_session()
+        payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": kwargs.get("temperature", 0.7),
+            "max_tokens": kwargs.get("max_tokens", 512)
+        }
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}",
+            "HTTP-Referer": "https://github.com/mdnu838/opencascade",
+            "X-Title": "OpenCascade"
+        }
+        
+        async with session.post(
+            f"{self.base_url}/chat/completions",
+            json=payload,
+            headers=headers
+        ) as response:
+            if response.status != 200:
+                error_text = await response.text()
+                raise Exception(f"OpenRouter API error {response.status}: {error_text}")
+                
+            result = await response.json()
+            
+            # Extract response from OpenRouter format
+            if "choices" in result and len(result["choices"]) > 0:
                 return result["choices"][0]["message"]["content"]
+            
+            return str(result)
     
-    async def health_check(self) -> Dict[str, Any]:
-        """Check OpenRouter health and performance metrics."""
-        now = datetime.now()
-        
-        # Cache health check results for 5 minutes
-        if (self._last_health_check and 
-            (now - self._last_health_check["timestamp"]).total_seconds() < 300):
-            return self._last_health_check
-        
-        try:
-            async with aiohttp.ClientSession() as session:
-                start_time = datetime.now()
-                async with session.get(f"{self.base_url}/status") as response:
-                    latency = (datetime.now() - start_time).total_seconds() * 1000
-                    
-                    health_data = {
-                        "status": "ok" if response.status == 200 else "error",
-                        "latency_ms": latency,
-                        "timestamp": now
-                    }
-                    
-                    if response.status == 200:
-                        health_data.update(await response.json())
-                    
-                    self._last_health_check = health_data
-                    return health_data
-                    
-        except Exception as e:
-            return {
-                "status": "error",
-                "error": str(e),
-                "timestamp": now
-            }
+    async def close(self):
+        """Close the provider session."""
+        if self._session and not self._session.closed:
+            await self._session.close()
     
-    async def supported_tasks(self) -> List[str]:
-        """Get list of supported task types."""
-        capabilities = await self.get_capabilities()
-        tasks = set()
-        
-        for model in capabilities.get("models", []):
-            tasks.update(model.get("tasks", []))
-        
-        return list(tasks)
+    async def __aenter__(self):
+        """Async context manager entry."""
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit."""
+        await self.close()
