@@ -58,7 +58,78 @@ pytest tests/unit -v
 
 ---
 
-## 🔄 Development Workflow
+## � Branching Strategy & Pull Requests
+
+**IMPORTANT**: All feature changes require a separate branch and a Pull Request to `main`.
+
+### Branch Structure
+
+```
+main (production-ready, protected)
+├── mvp-alpha (alpha testing, protected)
+├── develop (integration branch)
+└── feature/* (feature branches)
+    ├── feature/new-provider
+    ├── bugfix/fix-selector
+    └── docs/update-readme
+```
+
+### Branch Types & Naming
+
+- **`feature/*`**: New features (e.g., `feature/add-anthropic-provider`)
+- **`bugfix/*`**: Bug fixes (e.g., `bugfix/fix-selector-method`)
+- **`hotfix/*`**: Critical production fixes (e.g., `hotfix/security-patch`)
+- **`docs/*`**: Documentation updates (e.g., `docs/update-api-guide`)
+- **`test/*`**: Test improvements (e.g., `test/add-combiner-tests`)
+- **`refactor/*`**: Code refactoring (e.g., `refactor/simplify-router`)
+
+### Creating a Feature Branch
+
+```bash
+# Always start from latest main or develop
+git checkout main
+git pull origin main
+
+# Create your feature branch
+git checkout -b feature/your-feature-name
+
+# Make changes, commit regularly
+git add .
+git commit -m "feat: add new feature"
+
+# Push to GitHub
+git push origin feature/your-feature-name
+
+# Create Pull Request on GitHub
+```
+
+### Pull Request Requirements
+
+**Every PR MUST**:
+- ✅ Pass all CI/CD checks
+- ✅ Include tests for new code
+- ✅ Maintain ≥90% code coverage
+- ✅ Be reviewed and approved by a maintainer
+- ✅ Have no merge conflicts
+- ✅ Follow conventional commit format
+- ✅ Update documentation if needed
+
+### PR Title Format
+
+Use conventional commits:
+```
+<type>: <description>
+
+Examples:
+feat: Add Anthropic Claude provider
+fix: Resolve selector method name mismatch
+docs: Update installation guide
+test: Add router integration tests
+```
+
+---
+
+## �🔄 Development Workflow
 
 ### 1. Choose a Task
 - Review `docs/TASK_BREAKDOWN.md`
